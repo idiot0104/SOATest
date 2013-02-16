@@ -1,11 +1,10 @@
-
 // Study Structure Of Array
 #include "stdafx.h"
 #include <xmmintrin.h>
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-  __m128 x1= {1.0f , 3.0f , 1.0f , 2.0f };
+  	__m128 x1= {1.0f , 3.0f , 1.0f , 2.0f };
 	__m128 y1= {2.0f , 2.0f , 1.0f , 2.0f };
 	__m128 z1= {3.0f , 1.0f , 1.0f , 2.0f };
 
