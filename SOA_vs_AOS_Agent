@@ -1,0 +1,236 @@
+// AgentPerfTest.cpp : コンソール アプリケーションのエントリ ポイントを定義します。
+//
+
+#include "stdafx.h"
+#include <chrono>
+#include <iostream>
+#include <ppl.h>
+#include <mmintrin.h>
+
+#define AGENT_NUM  10000
+#define TEST_COUNT 10000
+
+#define LARGE_SIZE (0)
+
+#pragma pack( push , 1 )
+class AgentAOS
+{
+public:
+
+public:
+  __m128		propA;		//[16]
+	int			propB;		//[4]
+	float		propC;		//[4]
+	float		propD;		//[4]
+	uint32_t	padding;	//[4]
+#if LARGE_SIZE
+	__m128		propE;		//[16]
+	__m128		propF;		//[16]
+	__m128		propG;		//[16]
+#endif
+};							//(80) or (32)
+#pragma pack( pop )
+
+#if LARGE_SIZE
+static_assert( sizeof(AgentAOS) == 80 , "wrong size" );
+#else
+static_assert( sizeof(AgentAOS) == 32 , "wrong size" );
+#endif
+
+struct AgentSOA
+{
+	__declspec(align(16)) __m128	propA[AGENT_NUM]; //16*N
+	__declspec(align(16)) int		propB[AGENT_NUM]; // 4*N
+	__declspec(align(16)) float		propC[AGENT_NUM]; // 4*N
+	__declspec(align(16)) float		propD[AGENT_NUM]; // 4*N
+
+#if LARGE_SIZE
+	__declspec(align(16)) __m128	propE[AGENT_NUM]; //16*N
+	__declspec(align(16)) __m128	propF[AGENT_NUM]; //16*N
+	__declspec(align(16)) __m128	propG[AGENT_NUM]; //16*N
+#endif
+};
+
+__declspec(align(16)) AgentAOS g_aos[AGENT_NUM];
+__declspec(align(16)) AgentSOA g_soa;
+
+void Clear()
+{
+	for ( int agentNo=0; agentNo < AGENT_NUM; ++agentNo )
+	{
+		g_aos[agentNo].propA = _mm_setr_ps( ((float)agentNo)*1.0f , ((float)agentNo)*2.0f , ((float)agentNo)*3.0f , ((float)agentNo)*4.0f );
+		g_aos[agentNo].propB = (agentNo%4);
+		g_aos[agentNo].propC = (float)agentNo;
+		g_aos[agentNo].propD = 0.0f;
+#if LARGE_SIZE
+		g_aos[agentNo].propE = _mm_setr_ps( ((float)agentNo)*0.1f , ((float)agentNo)*0.1f , ((float)agentNo)*0.1f , ((float)agentNo)*0.1f );
+		g_aos[agentNo].propF = _mm_setr_ps( ((float)agentNo)*0.2f , ((float)agentNo)*0.2f , ((float)agentNo)*0.2f , ((float)agentNo)*0.2f );
+		g_aos[agentNo].propG = _mm_setr_ps( ((float)agentNo)*0.3f , ((float)agentNo)*0.3f , ((float)agentNo)*0.3f , ((float)agentNo)*0.3f );
+#endif
+		g_soa.propA[agentNo] = _mm_setr_ps( ((float)agentNo)*1.0f , ((float)agentNo)*2.0f , ((float)agentNo)*3.0f , ((float)agentNo)*4.0f );
+		g_soa.propB[agentNo] = (agentNo%4);
+		g_soa.propC[agentNo] = (float)agentNo;
+		g_soa.propC[agentNo] = 0.0f;
+#if LARGE_SIZE
+		g_aos[agentNo].propE = _mm_setr_ps( ((float)agentNo)*0.1f , ((float)agentNo)*0.1f , ((float)agentNo)*0.1f , ((float)agentNo)*0.1f );
+		g_aos[agentNo].propF = _mm_setr_ps( ((float)agentNo)*0.2f , ((float)agentNo)*0.2f , ((float)agentNo)*0.2f , ((float)agentNo)*0.2f );
+		g_aos[agentNo].propG = _mm_setr_ps( ((float)agentNo)*0.3f , ((float)agentNo)*0.3f , ((float)agentNo)*0.3f , ((float)agentNo)*0.3f );
+#endif
+	}
+}
+
+inline void UpdateAOS( AgentAOS& agent )
+{
+	if ( agent.propB == 0 )
+	{
+		__m128 tmp1 = _mm_set_ps1( agent.propC );
+		__m128 tmp2 = _mm_mul_ps( agent.propA , tmp1 );
+		agent.propD += tmp2.m128_f32[0] + tmp2.m128_f32[1] + tmp2.m128_f32[2] + tmp2.m128_f32[3];
+#if LARGE_SIZE
+		agent.propG = _mm_add_ps( agent.propE , agent.propF );
+#endif
+	}
+	else
+	{
+		__m128 tmp1  = _mm_set_ps1( (0.5f*agent.propC) );
+		__m128 tmp2 = _mm_mul_ps( agent.propA , tmp1 );
+		agent.propD += tmp2.m128_f32[0] + tmp2.m128_f32[1] + tmp2.m128_f32[2] + tmp2.m128_f32[3];
+#if LARGE_SIZE
+		agent.propG = _mm_add_ps( agent.propE , agent.propF );
+#endif
+	}
+}
+
+inline void UpdateSOA( int agentNo )
+{
+	if ( g_soa.propB[agentNo] == 0 )
+	{
+		__m128 tmp1 = _mm_set_ps1( g_soa.propC[agentNo] );
+		__m128 tmp2 = _mm_mul_ps( g_soa.propA[agentNo] , tmp1 );
+		g_soa.propD[agentNo] += tmp2.m128_f32[0] + tmp2.m128_f32[1] + tmp2.m128_f32[2] + tmp2.m128_f32[3];
+#if LARGE_SIZE
+		g_soa.propG[agentNo] = _mm_add_ps( g_soa.propE[agentNo] , g_soa.propF[agentNo] );
+#endif
+	}
+	else
+	{
+		__m128 tmp1  = _mm_set_ps1( (0.5f*g_soa.propC[agentNo]) );
+		__m128 tmp2 = _mm_mul_ps( g_soa.propA[agentNo] , tmp1 );
+		g_soa.propD[agentNo] += tmp2.m128_f32[0] + tmp2.m128_f32[1] + tmp2.m128_f32[2] + tmp2.m128_f32[3];
+#if LARGE_SIZE
+		g_soa.propG[agentNo] = _mm_add_ps( g_soa.propE[agentNo] , g_soa.propF[agentNo] );
+#endif
+	}
+}
+
+void UpdateSingleAOS()
+{
+	for ( int loopNo =0; loopNo < TEST_COUNT; ++loopNo )
+	{
+		for ( int agentNo=0; agentNo < AGENT_NUM; ++agentNo )
+		{
+			UpdateAOS( g_aos[agentNo] );
+		}
+	}
+}
+
+void UpdateSingleSOA()
+{
+	for ( int loopNo =0; loopNo < TEST_COUNT; ++loopNo )
+	{
+		for ( int agentNo=0; agentNo < AGENT_NUM; ++agentNo )
+		{
+			UpdateSOA( agentNo );
+		}
+	}
+}
+
+void UpdateParAOS()
+{
+	concurrency::parallel_for( 0 , AGENT_NUM , [](int agentNo)
+	{
+		for ( int loopNo =0; loopNo < TEST_COUNT; ++loopNo )
+		{
+			UpdateAOS( g_aos[agentNo] );
+		}
+	}
+	);
+}
+
+void UpdateParSOA()
+{
+	concurrency::parallel_for( 0 , AGENT_NUM , [](int agentNo)
+	{
+		for ( int loopNo =0; loopNo < TEST_COUNT; ++loopNo )
+		{
+			UpdateSOA( agentNo );
+		}
+	}
+	);
+}
+
+int _tmain(int argc, _TCHAR* argv[])
+{
+	const int TEST_CYCLE = 10;
+	for ( int cycle = 0; cycle < TEST_CYCLE; ++cycle )
+	{
+	std::cout << "---------------------------------------------------" << std::endl;
+
+	Clear();
+	{
+		auto time_point = std::chrono::high_resolution_clock::now();
+		UpdateSingleAOS();
+		auto duration = std::chrono::high_resolution_clock::now() - time_point;
+		auto milisec = std::chrono::duration_cast<std::chrono::milliseconds>( duration ).count();
+		std::cout << "Single AOS:       " << milisec << std::endl;
+	}
+
+	Clear();
+	{
+		auto time_point = std::chrono::high_resolution_clock::now();
+		UpdateSingleSOA();
+		auto duration = std::chrono::high_resolution_clock::now() - time_point;
+		auto milisec = std::chrono::duration_cast<std::chrono::milliseconds>( duration ).count();
+		std::cout << "Single SOA:       " << milisec << std::endl;
+	}
+
+	Clear();
+	{
+		auto time_point = std::chrono::high_resolution_clock::now();
+		UpdateParAOS();
+		auto duration = std::chrono::high_resolution_clock::now() - time_point;
+		auto milisec = std::chrono::duration_cast<std::chrono::milliseconds>( duration ).count();
+		std::cout << "Parallel AOS:      " << milisec << std::endl;
+	}
+
+	Clear();
+	{
+		auto time_point = std::chrono::high_resolution_clock::now();
+		UpdateParSOA();
+		auto duration = std::chrono::high_resolution_clock::now() - time_point;
+		auto milisec = std::chrono::duration_cast<std::chrono::milliseconds>( duration ).count();
+		std::cout << "Parallel SOA:      " << milisec << std::endl;
+	}
+	}
+
+	getchar();
+	return 0;
+}
+
+//LargeSize 80byte
+---------------------------------------------------
+Single AOS:       638
+Single SOA:       381
+Parallel AOS:      93
+Parallel SOA:      87
+---------------------------------------------------
+
+//SmallSize 32Byte
+---------------------------------------------------
+Single AOS:       363
+Single SOA:       321
+Parallel AOS:      89
+Parallel SOA:      87
+---------------------------------------------------
+
+
